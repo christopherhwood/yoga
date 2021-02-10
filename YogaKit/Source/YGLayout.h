@@ -29,13 +29,6 @@ typedef NS_OPTIONS(NSInteger, YGDimensionFlexibility) {
 /**
  Make default init unavailable, as it will not initialise YGNode which is
  required for the setters and getters of YGLayout's properties to work properly.
-*/
-- (instancetype)init
-    __attribute__((unavailable("you are not meant to initialise YGLayout")));
-
-/**
- Make default init unavailable, as it will not initialise YGNode which is
- required for the setters and getters of YGLayout's properties to work properly.
  */
 + (instancetype)new
     __attribute__((unavailable("you are not meant to initialise YGLayout")));
@@ -170,5 +163,8 @@ typedef NS_OPTIONS(NSInteger, YGDimensionFlexibility) {
  Mark that a view's layout needs to be recalculated. Only works for leaf views.
  */
 - (void)markDirty;
+
+- (void)addChildLayout:(YGLayout*) child;
+- (void)removeChildLayout:(YGLayout*) child;
 
 @end

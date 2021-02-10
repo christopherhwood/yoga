@@ -24,6 +24,15 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
   return yoga;
 }
 
+- (void)setYoga:(YGLayout *)yoga {
+    if (self.yoga != nil) {
+        self.yoga.view = nil;
+    }
+    
+    yoga.view = self;
+    objc_setAssociatedObject(self, kYGYogaAssociatedKey, yoga, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
 - (BOOL)isYogaEnabled {
   return objc_getAssociatedObject(self, kYGYogaAssociatedKey) != nil;
 }

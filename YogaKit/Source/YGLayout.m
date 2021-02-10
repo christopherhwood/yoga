@@ -158,10 +158,20 @@ YGValue YGPercentValue(CGFloat value) {
 
 static YGConfigRef globalConfig;
 
+@interface __YGNodeContext: NSObject
+
+@property(nonatomic, readwrite, weak) UIView* view;
+@property(nonatomic, readwrite, assign) CGSize intrinsicSize;
+
+@end
+
+@implementation __YGNodeContext
+@end
+
 @interface YGLayout ()
 
-@property(nonatomic, weak, readonly) UIView* view;
 @property(nonatomic, assign, readonly) BOOL isUIView;
+@property(nonatomic, retain, readwrite) __YGNodeContext* ctx;
 
 @end
 
@@ -178,17 +188,39 @@ static YGConfigRef globalConfig;
   YGConfigSetPointScaleFactor(globalConfig, [UIScreen mainScreen].scale);
 }
 
-- (instancetype)initWithView:(UIView*)view {
+- (instancetype)init {
   if (self = [super init]) {
-    _view = view;
+    _ctx = [[__YGNodeContext alloc] init];
     _node = YGNodeNewWithConfig(globalConfig);
-    YGNodeSetContext(_node, (__bridge void*)view);
     _isEnabled = NO;
     _isIncludedInLayout = YES;
-    _isUIView = [view isMemberOfClass:[UIView class]];
+  }
+    
+  return self;
+}
+
+- (instancetype)initWithView:(UIView*)view {
+  if (self = [super init]) {
+    _ctx = [[__YGNodeContext alloc] init];
+    _ctx.view = view;
+    _node = YGNodeNewWithConfig(globalConfig);
+    YGNodeSetContext(_node, (__bridge void*)_ctx);
+    _isEnabled = NO;
+    _isIncludedInLayout = YES;
+    _isUIView = [_ctx.view isMemberOfClass:[UIView class]];
   }
 
   return self;
+}
+
+- (UIView *)view {
+  return _ctx.view;
+}
+
+- (void)setView:(UIView *)view {
+  _ctx.view = view;
+    YGNodeSetContext(_node, (__bridge void*)_ctx);
+    _isUIView = [_ctx.view isMemberOfClass:[UIView class]];
 }
 
 - (void)dealloc {
@@ -224,11 +256,15 @@ static YGConfigRef globalConfig;
       [NSThread isMainThread],
       @"This method must be called on the main thread.");
   if (self.isEnabled) {
-    for (UIView* subview in self.view.subviews) {
-      YGLayout* const yoga = subview.yoga;
-      if (yoga.isEnabled && yoga.isIncludedInLayout) {
-        return NO;
+    if (self.view != nil) {
+      for (UIView* subview in self.view.subviews) {
+        YGLayout* const yoga = subview.yoga;
+        if (yoga.isEnabled && yoga.isIncludedInLayout) {
+          return NO;
+        }
       }
+    } else {
+      return YGNodeGetChildCount(self.node) > 0;
     }
   }
 
@@ -327,7 +363,10 @@ YG_PROPERTY(CGFloat, aspectRatio, AspectRatio)
   NSAssert([NSThread isMainThread], @"Yoga calculation must be done on main.");
   NSAssert(self.isEnabled, @"Yoga is not enabled for this view.");
 
-  YGAttachNodesFromViewHierachy(self.view);
+  // If we don't have a view then we should have set children on the node already.
+  if (self.view != nil) {
+    YGAttachNodesFromViewHierachy(self.view);
+  }
 
   const YGNodeRef node = self.node;
   YGNodeCalculateLayout(
@@ -352,21 +391,24 @@ static YGSize YGMeasureView(
   const CGFloat constrainedHeight =
       (heightMode == YGMeasureModeUndefined) ? CGFLOAT_MAX : height;
 
-  UIView* view = (__bridge UIView*)YGNodeGetContext(node);
-  CGSize sizeThatFits = CGSizeZero;
+  __YGNodeContext* ctx = (__bridge __YGNodeContext*)YGNodeGetContext(node);
+  CGSize sizeThatFits = ctx.intrinsicSize;
 
-  // The default implementation of sizeThatFits: returns the existing size of
-  // the view. That means that if we want to layout an empty UIView, which
-  // already has got a frame set, its measured size should be CGSizeZero, but
-  // UIKit returns the existing size.
-  //
-  // See https://github.com/facebook/yoga/issues/606 for more information.
-  if (!view.yoga.isUIView || [view.subviews count] > 0) {
-    sizeThatFits = [view sizeThatFits:(CGSize){
-                                          .width = constrainedWidth,
-                                          .height = constrainedHeight,
-                                      }];
+  if (ctx.view != nil) {
+    // The default implementation of sizeThatFits: returns the existing size of
+    // the view. That means that if we want to layout an empty UIView, which
+    // already has got a frame set, its measured size should be CGSizeZero, but
+    // UIKit returns the existing size.
+    //
+    // See https://github.com/facebook/yoga/issues/606 for more information.
+    if (!ctx.view.yoga.isUIView || [ctx.view.subviews count] > 0) {
+      sizeThatFits = [ctx.view sizeThatFits:(CGSize){
+                                            .width = constrainedWidth,
+                                            .height = constrainedHeight,
+                                        }];
+    }
   }
+  
 
   return (YGSize){
       .width = YGSanitizeMeasurement(
@@ -501,6 +543,14 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
       YGApplyLayoutToViewHierarchy(view.subviews[i], NO);
     }
   }
+}
+
+- (void)addChildLayout:(YGLayout*) child {
+  YGNodeInsertChild(self.node, child.node, YGNodeGetChildCount(self.node));
+}
+
+- (void)removeChildLayout:(YGLayout*) child {
+  YGNodeRemoveChild(self.node, child.node);
 }
 
 @end

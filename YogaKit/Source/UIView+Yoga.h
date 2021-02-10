@@ -17,7 +17,7 @@ typedef void (^YGLayoutConfigurationBlock)(YGLayout* layout);
 /**
  The YGLayout that is attached to this view. It is lazily created.
  */
-@property(nonatomic, readonly, strong) YGLayout* yoga;
+@property(nonatomic, readwrite, strong) YGLayout* yoga;
 /**
  Indicates whether or not Yoga is enabled
  */
