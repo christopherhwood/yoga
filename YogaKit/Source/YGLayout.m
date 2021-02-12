@@ -205,6 +205,7 @@ static YGConfigRef globalConfig;
     _ctx.view = view;
     _node = YGNodeNewWithConfig(globalConfig);
     YGNodeSetContext(_node, (__bridge void*)_ctx);
+    YGNodeSetMeasureFunc(self.node, YGMeasureView);
     _isEnabled = NO;
     _isIncludedInLayout = YES;
     _isUIView = [_ctx.view isMemberOfClass:[UIView class]];
@@ -219,8 +220,9 @@ static YGConfigRef globalConfig;
 
 - (void)setView:(UIView *)view {
   _ctx.view = view;
-    YGNodeSetContext(_node, (__bridge void*)_ctx);
-    _isUIView = [_ctx.view isMemberOfClass:[UIView class]];
+  YGNodeSetContext(_node, (__bridge void*)_ctx);
+  YGNodeSetMeasureFunc(self.node, YGMeasureView);
+  _isUIView = [_ctx.view isMemberOfClass:[UIView class]];
 }
 
 - (void)dealloc {
@@ -255,18 +257,19 @@ static YGConfigRef globalConfig;
   NSAssert(
       [NSThread isMainThread],
       @"This method must be called on the main thread.");
-  if (self.isEnabled) {
-    if (self.view != nil) {
-      for (UIView* subview in self.view.subviews) {
-        YGLayout* const yoga = subview.yoga;
-        if (yoga.isEnabled && yoga.isIncludedInLayout) {
-          return NO;
-        }
-      }
-    } else {
-      return YGNodeGetChildCount(self.node) > 0;
-    }
-  }
+//  if (self.isEnabled) {
+    // Maybe unnecessary??
+//    if (self.view != nil) {
+//      for (UIView* subview in self.view.subviews) {
+//        YGLayout* const yoga = subview.yoga;
+//        if (yoga.isEnabled && yoga.isIncludedInLayout) {
+//          return NO;
+//        }
+//      }
+//    } else {
+  return YGNodeGetChildCount(self.node) == 0;
+//    }
+//  }
 
   return YES;
 }
@@ -364,9 +367,9 @@ YG_PROPERTY(CGFloat, aspectRatio, AspectRatio)
   NSAssert(self.isEnabled, @"Yoga is not enabled for this view.");
 
   // If we don't have a view then we should have set children on the node already.
-  if (self.view != nil) {
-    YGAttachNodesFromViewHierachy(self.view);
-  }
+//  if (self.view != nil) {
+//    YGAttachNodesFromViewHierachy(self.view);
+//  }
 
   const YGNodeRef node = self.node;
   YGNodeCalculateLayout(
@@ -450,37 +453,38 @@ static BOOL YGNodeHasExactSameChildren(
   return YES;
 }
 
-static void YGAttachNodesFromViewHierachy(UIView* const view) {
-  YGLayout* const yoga = view.yoga;
-  const YGNodeRef node = yoga.node;
-
-  // Only leaf nodes should have a measure function
-  if (yoga.isLeaf) {
-    YGRemoveAllChildren(node);
-    YGNodeSetMeasureFunc(node, YGMeasureView);
-  } else {
-    YGNodeSetMeasureFunc(node, NULL);
-
-    NSMutableArray<UIView*>* subviewsToInclude =
-        [[NSMutableArray alloc] initWithCapacity:view.subviews.count];
-    for (UIView* subview in view.subviews) {
-      if (subview.yoga.isEnabled && subview.yoga.isIncludedInLayout) {
-        [subviewsToInclude addObject:subview];
-      }
-    }
-
-    if (!YGNodeHasExactSameChildren(node, subviewsToInclude)) {
-      YGRemoveAllChildren(node);
-      for (int i = 0; i < subviewsToInclude.count; i++) {
-        YGNodeInsertChild(node, subviewsToInclude[i].yoga.node, i);
-      }
-    }
-
-    for (UIView* const subview in subviewsToInclude) {
-      YGAttachNodesFromViewHierachy(subview);
-    }
-  }
-}
+// TODO delete this
+//static void YGAttachNodesFromViewHierachy(UIView* const view) {
+//  YGLayout* const yoga = view.yoga;
+//  const YGNodeRef node = yoga.node;
+//
+//  // Only leaf nodes should have a measure function
+//  if (yoga.isLeaf) {
+//    YGRemoveAllChildren(node);
+//    YGNodeSetMeasureFunc(node, YGMeasureView);
+//  } else {
+//    YGNodeSetMeasureFunc(node, NULL);
+//
+//    NSMutableArray<UIView*>* subviewsToInclude =
+//        [[NSMutableArray alloc] initWithCapacity:view.subviews.count];
+//    for (UIView* subview in view.subviews) {
+//      if (subview.yoga.isEnabled && subview.yoga.isIncludedInLayout) {
+//        [subviewsToInclude addObject:subview];
+//      }
+//    }
+//
+//    if (!YGNodeHasExactSameChildren(node, subviewsToInclude)) {
+//      YGRemoveAllChildren(node);
+//      for (int i = 0; i < subviewsToInclude.count; i++) {
+//        YGNodeInsertChild(node, subviewsToInclude[i].yoga.node, i);
+//      }
+//    }
+//
+//    for (UIView* const subview in subviewsToInclude) {
+//      YGAttachNodesFromViewHierachy(subview);
+//    }
+//  }
+//}
 
 static void YGRemoveAllChildren(const YGNodeRef node) {
   if (node == NULL) {
@@ -545,12 +549,35 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
   }
 }
 
-- (void)addChildLayout:(YGLayout*) child {
-  YGNodeInsertChild(self.node, child.node, YGNodeGetChildCount(self.node));
+- (void)insertChildLayout:(YGLayout *)child atIndex:(NSInteger)index {
+  if (YGNodeHasMeasureFunc(self.node)) {
+    YGNodeSetMeasureFunc(self.node, NULL);
+  }
+  YGNodeInsertChild(self.node, child.node, (int)index);
+}
+
+- (void)exchangeChildLayoutAtIndex:(NSInteger)indexA withLayoutAtIndex:(NSInteger)indexB {
+  YGNodeRef childA = YGNodeGetChild(self.node, (int)indexA);
+  YGNodeRef childB = YGNodeGetChild(self.node, (int)indexB);
+  
+  YGNodeSwapChild(self.node, childA, (int)indexB);
+  YGNodeSwapChild(self.node, childB, (int)indexA);
 }
 
 - (void)removeChildLayout:(YGLayout*) child {
   YGNodeRemoveChild(self.node, child.node);
+  if (YGNodeGetChildCount(self.node) == 0) {
+    YGNodeSetMeasureFunc(self.node, YGMeasureView);
+  }
+}
+
+- (void)reparentChildrenToNewParent:(YGLayout *)newParent {
+  int childCount = YGNodeGetChildCount(self.node);
+  for (int i = 0; i < childCount; i++) {
+    YGNodeRef child = YGNodeGetChild(self.node, i);
+    YGNodeRemoveChild(self.node, child);
+    YGNodeInsertChild(newParent.node, child, i);
+  }
 }
 
 @end

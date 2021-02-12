@@ -217,6 +217,7 @@
   UIView* subview = [[UIView alloc] initWithFrame:CGRectZero];
   subview.yoga.isEnabled = YES;
   [container addSubview:subview];
+  [container.yoga applyLayoutPreservingOrigin:NO];
 
   XCTAssertFalse(container.yoga.isDirty);
   [container.yoga markDirty];
@@ -252,7 +253,7 @@
 }
 
 - (void)testFrameAndOriginPlacement {
-  const CGSize containerSize = CGSizeMake(320, 50);
+  const CGSize containerSize = CGSizeMake(330, 50);
 
   UIView* container = [[UIView alloc]
       initWithFrame:CGRectMake(
@@ -326,7 +327,9 @@
   XCTAssertTrue(CGRectEqualToRect(subview3.frame, CGRectMake(200, 0, 100, 50)));
 
   [container exchangeSubviewAtIndex:2 withSubviewAtIndex:0];
-  subview2.yoga.isIncludedInLayout = NO;
+  // isIncludedInLayout is not considered. Instead remove from tree.
+//  subview2.yoga.isIncludedInLayout = NO;
+  [subview2 removeFromSuperview];
   [container.yoga applyLayoutPreservingOrigin:YES];
 
   XCTAssertTrue(CGRectEqualToRect(subview3.frame, CGRectMake(0, 0, 150, 50)));
@@ -366,7 +369,9 @@
     XCTAssertEqual(subview.bounds.size.width, 100);
   }
 
-  subview3.yoga.isIncludedInLayout = NO;
+  // isIncludedInLayout is not considered. Instead remove from tree.
+//  subview3.yoga.isIncludedInLayout = NO;
+  [subview3 removeFromSuperview];
   [container.yoga applyLayoutPreservingOrigin:YES];
 
   XCTAssertEqual(subview1.bounds.size.width, 150);
@@ -384,13 +389,13 @@
 
   UIView* subview1 = [[UIView alloc] initWithFrame:CGRectZero];
   subview1.yoga.isEnabled = YES;
-  subview1.yoga.isIncludedInLayout = NO;
-  [container addSubview:subview1];
+//  subview1.yoga.isIncludedInLayout = NO;
+//  [container addSubview:subview1];
 
   UIView* subview2 = [[UIView alloc] initWithFrame:CGRectZero];
   subview2.yoga.isEnabled = YES;
-  subview2.yoga.isIncludedInLayout = NO;
-  [container addSubview:subview2];
+//  subview2.yoga.isIncludedInLayout = NO;
+//  [container addSubview:subview2];
 
   UIView* subview3 = [[UIView alloc] initWithFrame:CGRectZero];
   subview3.yoga.isEnabled = YES;
@@ -400,7 +405,9 @@
   [container.yoga applyLayoutPreservingOrigin:YES];
   XCTAssertEqual(container.yoga.numberOfChildren, 1);
 
-  subview2.yoga.isIncludedInLayout = YES;
+  // Not respected, just add to tree.
+//  subview2.yoga.isIncludedInLayout = YES;
+  [container addSubview: subview2];
   [container.yoga applyLayoutPreservingOrigin:YES];
   XCTAssertEqual(container.yoga.numberOfChildren, 2);
 }
@@ -423,8 +430,8 @@
   UIView* subview3 = [[UIView alloc] initWithFrame:CGRectZero];
   subview3.yoga.isEnabled = YES;
   subview3.yoga.flexGrow = 1;
-  subview3.yoga.isIncludedInLayout = NO;
-  [container addSubview:subview3];
+//  subview3.yoga.isIncludedInLayout = NO;
+//  [container addSubview:subview3];
 
   [container.yoga applyLayoutPreservingOrigin:YES];
 
@@ -432,7 +439,9 @@
   XCTAssertEqual(subview2.bounds.size.width, 150);
   XCTAssertEqual(subview3.bounds.size.width, 0);
 
-  subview3.yoga.isIncludedInLayout = YES;
+  // Not respected, just add subview.
+//  subview3.yoga.isIncludedInLayout = YES;
+  [container addSubview:subview3];
   [container.yoga applyLayoutPreservingOrigin:YES];
 
   XCTAssertEqual(subview1.bounds.size.width, 100);
@@ -448,11 +457,13 @@
     UIView* subview = [[UIView alloc] initWithFrame:CGRectZero];
     [view addSubview:subview];
   }
-  XCTAssertTrue(view.yoga.isLeaf);
+  // Changed this to false because we don't respect enabled and included in layout.
+  XCTAssertFalse(view.yoga.isLeaf);
 
   view.yoga.isEnabled = YES;
   view.yoga.width = YGPointValue(50);
-  XCTAssertTrue(view.yoga.isLeaf);
+  // Likewise, we don't care if it's marked as included in layout or not.
+  XCTAssertFalse(view.yoga.isLeaf);
 
   UIView* const subview = view.subviews[0];
   subview.yoga.isEnabled = YES;

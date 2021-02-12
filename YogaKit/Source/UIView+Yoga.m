@@ -13,6 +13,61 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
 
 @implementation UIView (YogaKit)
 
++ (void)load {
+  static dispatch_once_t once;
+  dispatch_once(&once, ^{
+    
+    void (^swizzle)(Class class, SEL originalSelector, SEL swizzledSelector) = ^(Class class, SEL originalSelector, SEL swizzledSelector) {
+      Method originalMethod = class_getInstanceMethod(class, originalSelector);
+      Method swizzledMethod = class_getInstanceMethod(class, swizzledSelector);
+      
+      BOOL didAddInsertSubviewAtIndexMethod = class_addMethod(class, originalSelector, method_getImplementation(swizzledMethod), method_getTypeEncoding(swizzledMethod));
+      if (didAddInsertSubviewAtIndexMethod) {
+        class_replaceMethod(class, swizzledSelector, method_getImplementation(originalMethod), method_getTypeEncoding(originalMethod));
+      } else {
+        method_exchangeImplementations(originalMethod, swizzledMethod);
+      }
+    };
+    
+    Class class = [self class];
+    
+    SEL oInsertSubviewAtIndexSelector = @selector(insertSubview:atIndex:);
+    SEL sInsertSubviewAtIndexSelector = @selector(yoga_insertSubview:atIndex:);
+    swizzle(class, oInsertSubviewAtIndexSelector, sInsertSubviewAtIndexSelector);
+    
+    SEL oInsertSubviewAboveSubviewSelector = @selector(insertSubview:aboveSubview:);
+    SEL sInsertSubviewAboveSubviewSelector = @selector(yoga_insertSubview:aboveSubview:);
+    swizzle(class, oInsertSubviewAboveSubviewSelector, sInsertSubviewAboveSubviewSelector);
+    
+    SEL oInsertSubviewBelowSubviewSelector = @selector(insertSubview:belowSubview:);
+    SEL sInsertSubviewBelowSubviewSelector = @selector(yoga_insertSubview:belowSubview:);
+    swizzle(class, oInsertSubviewBelowSubviewSelector, sInsertSubviewBelowSubviewSelector);
+    
+    SEL oAddSubviewSelector = @selector(addSubview:);
+    SEL sAddSubviewSelector = @selector(yoga_addSubview:);
+    swizzle(class, oAddSubviewSelector, sAddSubviewSelector);
+    
+    SEL oExchangeSubviewsSelector = @selector(exchangeSubviewAtIndex:withSubviewAtIndex:);
+    SEL sExchangeSubviewsSelector = @selector(yoga_exchangeSubviewAtIndex:withSubviewAtIndex:);
+    swizzle(class, oExchangeSubviewsSelector, sExchangeSubviewsSelector);
+    
+    SEL oRemoveFromSuperviewSelector = @selector(removeFromSuperview);
+    SEL sRemoveFromSuperviewSelector = @selector(yoga_removeFromSuperview);
+    swizzle(class, oRemoveFromSuperviewSelector, sRemoveFromSuperviewSelector);
+    
+  });
+}
+
+// TODO currently we only set measure func on leaf nodes which is
+// determined by whether the view's yoga is enabled, whether the
+// view has children, and whether the view's children's yogas are
+// enabled and included in layout (aka set on a view)
+// It's unclear whether we need all of that complexity, it seems
+// like we should be able to:
+// 1. say all yoga nodes are part of layout and enabled
+// 2. just determine if a node is a leaf by whether it
+// has children nodes [done]
+
 - (YGLayout*)yoga {
   YGLayout* yoga = objc_getAssociatedObject(self, kYGYogaAssociatedKey);
   if (!yoga) {
@@ -26,7 +81,12 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
 
 - (void)setYoga:(YGLayout *)yoga {
     if (self.yoga != nil) {
-        self.yoga.view = nil;
+      if (self.superview != nil) {
+        [self.superview.yoga insertChildLayout:yoga atIndex:[self.superview.subviews indexOfObject:self]];
+        [self.superview.yoga removeChildLayout:self.yoga];
+      }
+      [self.yoga reparentChildrenToNewParent:yoga];
+      self.yoga.view = nil;
     }
     
     yoga.view = self;
@@ -41,6 +101,44 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
   if (block != nil) {
     block(self.yoga);
   }
+}
+
+#pragma mark - Method Swizzling
+
+- (void)yoga_insertSubview:(UIView*)view atIndex:(NSInteger)index {
+  [self.yoga insertChildLayout:view.yoga atIndex:index];
+  [self yoga_insertSubview:view atIndex:index];
+}
+
+- (void)yoga_insertSubview:(UIView*)view aboveSubview:(UIView*)subview {
+  NSInteger indexOfSubview = [self.superview.subviews indexOfObject:subview];
+  [self.yoga insertChildLayout:view.yoga atIndex:indexOfSubview];
+  [self yoga_insertSubview:view aboveSubview:subview];
+}
+
+- (void)yoga_insertSubview:(UIView*)view belowSubview:(UIView*)subview {
+  NSInteger indexOfSubview = [self.superview.subviews indexOfObject:subview];
+  [self.yoga insertChildLayout:view.yoga atIndex:indexOfSubview + 1];
+  [self yoga_insertSubview:view belowSubview:subview];
+}
+
+- (void)yoga_addSubview:(UIView*)view {
+  [self.yoga insertChildLayout:view.yoga atIndex:self.subviews.count];
+  [self yoga_addSubview:view];
+}
+
+- (void)yoga_exchangeSubviewAtIndex:(NSInteger)index1
+                 withSubviewAtIndex:(NSInteger)index2
+{
+  NSCAssert(index1 < self.subviews.count && index2 < self.subviews.count,
+            @"Cannot operate on indexes outside of the range of subviews.");
+  [self.yoga exchangeChildLayoutAtIndex:index1 withLayoutAtIndex:index2];
+  [self yoga_exchangeSubviewAtIndex:index1 withSubviewAtIndex:index2];
+}
+
+- (void)yoga_removeFromSuperview {
+  [self.superview.yoga removeChildLayout:self.yoga];
+  [self yoga_removeFromSuperview];
 }
 
 @end

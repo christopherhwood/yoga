@@ -164,7 +164,9 @@ typedef NS_OPTIONS(NSInteger, YGDimensionFlexibility) {
  */
 - (void)markDirty;
 
-- (void)addChildLayout:(YGLayout*) child;
-- (void)removeChildLayout:(YGLayout*) child;
+- (void)insertChildLayout:(YGLayout*)child atIndex:(NSInteger)index;
+- (void)exchangeChildLayoutAtIndex:(NSInteger)indexA withLayoutAtIndex:(NSInteger)indexB;
+- (void)removeChildLayout:(YGLayout*)child;
+- (void)reparentChildrenToNewParent:(YGLayout*)newParent;
 
 @end
