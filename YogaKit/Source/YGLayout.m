@@ -550,6 +550,20 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
 }
 
 - (void)insertChildLayout:(YGLayout *)child atIndex:(NSInteger)index {
+  if (YGNodeGetParent(child.node) == self.node) {
+    return;
+  }
+  
+  // Apparently UIKit removes the view from the parent w/o calling
+  // removeFromSuperview.
+  YGNodeRef maybeParent = YGNodeGetParent(child.node);
+  if (maybeParent) {
+    YGNodeRemoveChild(maybeParent, child.node);
+    if (YGNodeGetChildCount(maybeParent) == 0) {
+      YGNodeSetMeasureFunc(maybeParent, YGMeasureView);
+    }
+  }
+  
   if (YGNodeHasMeasureFunc(self.node)) {
     YGNodeSetMeasureFunc(self.node, NULL);
   }

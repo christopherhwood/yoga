@@ -106,25 +106,41 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
 #pragma mark - Method Swizzling
 
 - (void)yoga_insertSubview:(UIView*)view atIndex:(NSInteger)index {
-  [self.yoga insertChildLayout:view.yoga atIndex:index];
+  NSLog(@"%@",[NSThread callStackSymbols]);
   [self yoga_insertSubview:view atIndex:index];
+  
+  if (view != nil) {
+    [self.yoga insertChildLayout:view.yoga atIndex:index];
+  }
 }
 
 - (void)yoga_insertSubview:(UIView*)view aboveSubview:(UIView*)subview {
-  NSInteger indexOfSubview = [self.superview.subviews indexOfObject:subview];
-  [self.yoga insertChildLayout:view.yoga atIndex:indexOfSubview];
+  NSLog(@"%@",[NSThread callStackSymbols]);
   [self yoga_insertSubview:view aboveSubview:subview];
+  
+  if (view != nil && subview != nil) {
+    NSInteger indexOfSubview = [self.superview.subviews indexOfObject:subview];
+    [self.yoga insertChildLayout:view.yoga atIndex:indexOfSubview];
+  }
 }
 
 - (void)yoga_insertSubview:(UIView*)view belowSubview:(UIView*)subview {
-  NSInteger indexOfSubview = [self.superview.subviews indexOfObject:subview];
-  [self.yoga insertChildLayout:view.yoga atIndex:indexOfSubview + 1];
+  NSLog(@"%@",[NSThread callStackSymbols]);
   [self yoga_insertSubview:view belowSubview:subview];
+  
+  if (view != nil && subview != nil) {
+    NSInteger indexOfSubview = [self.superview.subviews indexOfObject:subview];
+    [self.yoga insertChildLayout:view.yoga atIndex:indexOfSubview + 1];
+  }
 }
 
 - (void)yoga_addSubview:(UIView*)view {
-  [self.yoga insertChildLayout:view.yoga atIndex:self.subviews.count];
+  NSLog(@"%@",[NSThread callStackSymbols]);
+  NSLog(@"\n\n%@\n\n%@\n\n%@\n\n", self.description, view.description, view.superview ? view.superview.description : @"No superview");
   [self yoga_addSubview:view];
+  if (view != nil) {
+    [self.yoga insertChildLayout:view.yoga atIndex:self.subviews.count - 1];
+  }
 }
 
 - (void)yoga_exchangeSubviewAtIndex:(NSInteger)index1

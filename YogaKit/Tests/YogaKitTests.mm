@@ -757,4 +757,23 @@
   XCTAssertEqual(view.yoga.borderEndWidth, 7);
 }
 
+- (void)testAddingSubviewToMultipleViews {
+  UIView* view1 = [[UIView alloc] initWithFrame:CGRectZero];
+  UIView* view2 = [[UIView alloc] initWithFrame:CGRectZero];
+  UIView* view3 = [[UIView alloc] initWithFrame:CGRectZero];
+  
+  [view1 addSubview:view2];
+  [view3 addSubview:view2];
+  XCTAssert(view1.yoga.numberOfChildren == 0);
+  XCTAssert(view3.yoga.numberOfChildren == 1);
+  XCTAssert(YGNodeGetParent(view2.yoga.node) == view3.yoga.node);
+}
+
+- (void)testAddingNullView {
+  // UITabBar does this... smh
+  UIView* view = [[UIView alloc] initWithFrame:CGRectZero];
+  
+  [view addSubview:nil];
+}
+
 @end
