@@ -161,7 +161,7 @@ static YGConfigRef globalConfig;
 @interface __YGNodeContext: NSObject
 
 @property(nonatomic, readwrite, weak) UIView* view;
-@property(nonatomic, readwrite, assign) CGSize intrinsicSize;
+@property(nonatomic, readwrite, assign) YGLayoutMeasureFunc measure;
 
 @end
 
@@ -177,8 +177,6 @@ static YGConfigRef globalConfig;
 
 @implementation YGLayout
 
-@synthesize isEnabled = _isEnabled;
-@synthesize isIncludedInLayout = _isIncludedInLayout;
 @synthesize node = _node;
 
 + (void)initialize {
@@ -192,8 +190,8 @@ static YGConfigRef globalConfig;
   if (self = [super init]) {
     _ctx = [[__YGNodeContext alloc] init];
     _node = YGNodeNewWithConfig(globalConfig);
-    _isEnabled = NO;
-    _isIncludedInLayout = YES;
+    YGNodeSetContext(_node, (__bridge void*)_ctx);
+    YGNodeSetMeasureFunc(self.node, YGMeasure);
   }
     
   return self;
@@ -205,9 +203,7 @@ static YGConfigRef globalConfig;
     _ctx.view = view;
     _node = YGNodeNewWithConfig(globalConfig);
     YGNodeSetContext(_node, (__bridge void*)_ctx);
-    YGNodeSetMeasureFunc(self.node, YGMeasureView);
-    _isEnabled = NO;
-    _isIncludedInLayout = YES;
+    YGNodeSetMeasureFunc(self.node, YGMeasure);
     _isUIView = [_ctx.view isMemberOfClass:[UIView class]];
   }
 
@@ -220,8 +216,6 @@ static YGConfigRef globalConfig;
 
 - (void)setView:(UIView *)view {
   _ctx.view = view;
-  YGNodeSetContext(_node, (__bridge void*)_ctx);
-  YGNodeSetMeasureFunc(self.node, YGMeasureView);
   _isUIView = [_ctx.view isMemberOfClass:[UIView class]];
 }
 
@@ -243,7 +237,7 @@ static YGConfigRef globalConfig;
   // this *should* be fine. Forgive me Hack Gods.
   const YGNodeRef node = self.node;
   if (!YGNodeHasMeasureFunc(node)) {
-    YGNodeSetMeasureFunc(node, YGMeasureView);
+    YGNodeSetMeasureFunc(node, YGMeasure);
   }
 
   YGNodeMarkDirty(node);
@@ -364,7 +358,7 @@ YG_PROPERTY(CGFloat, aspectRatio, AspectRatio)
 
 - (CGSize)calculateLayoutWithSize:(CGSize)size {
   NSAssert([NSThread isMainThread], @"Yoga calculation must be done on main.");
-  NSAssert(self.isEnabled, @"Yoga is not enabled for this view.");
+//  NSAssert(self.isEnabled, @"Yoga is not enabled for this view.");
 
   // If we don't have a view then we should have set children on the node already.
 //  if (self.view != nil) {
@@ -383,7 +377,7 @@ YG_PROPERTY(CGFloat, aspectRatio, AspectRatio)
 
 #pragma mark - Private
 
-static YGSize YGMeasureView(
+static YGSize YGMeasure(
     YGNodeRef node,
     float width,
     YGMeasureMode widthMode,
@@ -395,7 +389,7 @@ static YGSize YGMeasureView(
       (heightMode == YGMeasureModeUndefined) ? CGFLOAT_MAX : height;
 
   __YGNodeContext* ctx = (__bridge __YGNodeContext*)YGNodeGetContext(node);
-  CGSize sizeThatFits = ctx.intrinsicSize;
+  CGSize sizeThatFits = CGSizeZero;
 
   if (ctx.view != nil) {
     // The default implementation of sizeThatFits: returns the existing size of
@@ -410,6 +404,11 @@ static YGSize YGMeasureView(
                                             .height = constrainedHeight,
                                         }];
     }
+  } else if (ctx.measure) {
+    sizeThatFits = ctx.measure((CGSize){
+      .width = constrainedWidth,
+      .height = constrainedHeight
+    });
   }
   
 
@@ -453,39 +452,6 @@ static BOOL YGNodeHasExactSameChildren(
   return YES;
 }
 
-// TODO delete this
-//static void YGAttachNodesFromViewHierachy(UIView* const view) {
-//  YGLayout* const yoga = view.yoga;
-//  const YGNodeRef node = yoga.node;
-//
-//  // Only leaf nodes should have a measure function
-//  if (yoga.isLeaf) {
-//    YGRemoveAllChildren(node);
-//    YGNodeSetMeasureFunc(node, YGMeasureView);
-//  } else {
-//    YGNodeSetMeasureFunc(node, NULL);
-//
-//    NSMutableArray<UIView*>* subviewsToInclude =
-//        [[NSMutableArray alloc] initWithCapacity:view.subviews.count];
-//    for (UIView* subview in view.subviews) {
-//      if (subview.yoga.isEnabled && subview.yoga.isIncludedInLayout) {
-//        [subviewsToInclude addObject:subview];
-//      }
-//    }
-//
-//    if (!YGNodeHasExactSameChildren(node, subviewsToInclude)) {
-//      YGRemoveAllChildren(node);
-//      for (int i = 0; i < subviewsToInclude.count; i++) {
-//        YGNodeInsertChild(node, subviewsToInclude[i].yoga.node, i);
-//      }
-//    }
-//
-//    for (UIView* const subview in subviewsToInclude) {
-//      YGAttachNodesFromViewHierachy(subview);
-//    }
-//  }
-//}
-
 static void YGRemoveAllChildren(const YGNodeRef node) {
   if (node == NULL) {
     return;
@@ -510,10 +476,6 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
       @"Framesetting should only be done on the main thread.");
 
   const YGLayout* yoga = view.yoga;
-
-  if (!yoga.isIncludedInLayout) {
-    return;
-  }
 
   YGNodeRef node = yoga.node;
   const CGPoint topLeft = {
@@ -549,6 +511,14 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
   }
 }
 
+- (void)setMeasure:(YGLayoutMeasureFunc)measure {
+  _ctx.measure = measure;
+}
+
+- (YGLayoutMeasureFunc)measure {
+  return _ctx.measure;
+}
+
 - (void)insertChildLayout:(YGLayout *)child atIndex:(NSInteger)index {
   if (YGNodeGetParent(child.node) == self.node) {
     return;
@@ -560,7 +530,7 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
   if (maybeParent) {
     YGNodeRemoveChild(maybeParent, child.node);
     if (YGNodeGetChildCount(maybeParent) == 0) {
-      YGNodeSetMeasureFunc(maybeParent, YGMeasureView);
+      YGNodeSetMeasureFunc(maybeParent, YGMeasure);
     }
   }
   
@@ -581,7 +551,7 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
 - (void)removeChildLayout:(YGLayout*) child {
   YGNodeRemoveChild(self.node, child.node);
   if (YGNodeGetChildCount(self.node) == 0) {
-    YGNodeSetMeasureFunc(self.node, YGMeasureView);
+    YGNodeSetMeasureFunc(self.node, YGMeasure);
   }
 }
 

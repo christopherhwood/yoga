@@ -24,6 +24,8 @@ typedef NS_OPTIONS(NSInteger, YGDimensionFlexibility) {
   YGDimensionFlexibilityFlexibleHeight = 1 << 1,
 };
 
+typedef CGSize(^YGLayoutMeasureFunc)(CGSize constrainedSize);
+
 @interface YGLayout : NSObject
 
 /**
@@ -32,19 +34,6 @@ typedef NS_OPTIONS(NSInteger, YGDimensionFlexibility) {
  */
 + (instancetype)new
     __attribute__((unavailable("you are not meant to initialise YGLayout")));
-
-/**
-  The property that decides if we should include this view when calculating
-  layout. Defaults to YES.
- */
-@property(nonatomic, readwrite, assign, setter=setIncludedInLayout:)
-    BOOL isIncludedInLayout;
-
-/**
- The property that decides during layout/sizing whether or not styling
- properties should be applied. Defaults to NO.
- */
-@property(nonatomic, readwrite, assign, setter=setEnabled:) BOOL isEnabled;
 
 @property(nonatomic, readwrite, assign) YGDirection direction;
 @property(nonatomic, readwrite, assign) YGFlexDirection flexDirection;
@@ -163,6 +152,11 @@ typedef NS_OPTIONS(NSInteger, YGDimensionFlexibility) {
  Mark that a view's layout needs to be recalculated. Only works for leaf views.
  */
 - (void)markDirty;
+
+/**
+ A way to provide a custom measure function for leaf nodes without views.
+ */
+@property(nonatomic, readwrite, assign)YGLayoutMeasureFunc measure;
 
 - (void)insertChildLayout:(YGLayout*)child atIndex:(NSInteger)index;
 - (void)exchangeChildLayoutAtIndex:(NSInteger)indexA withLayoutAtIndex:(NSInteger)indexB;

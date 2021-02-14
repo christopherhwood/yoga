@@ -106,7 +106,6 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
 #pragma mark - Method Swizzling
 
 - (void)yoga_insertSubview:(UIView*)view atIndex:(NSInteger)index {
-  NSLog(@"%@",[NSThread callStackSymbols]);
   [self yoga_insertSubview:view atIndex:index];
   
   if (view != nil) {
@@ -115,7 +114,6 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
 }
 
 - (void)yoga_insertSubview:(UIView*)view aboveSubview:(UIView*)subview {
-  NSLog(@"%@",[NSThread callStackSymbols]);
   [self yoga_insertSubview:view aboveSubview:subview];
   
   if (view != nil && subview != nil) {
@@ -125,7 +123,6 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
 }
 
 - (void)yoga_insertSubview:(UIView*)view belowSubview:(UIView*)subview {
-  NSLog(@"%@",[NSThread callStackSymbols]);
   [self yoga_insertSubview:view belowSubview:subview];
   
   if (view != nil && subview != nil) {
@@ -135,8 +132,6 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
 }
 
 - (void)yoga_addSubview:(UIView*)view {
-  NSLog(@"%@",[NSThread callStackSymbols]);
-  NSLog(@"\n\n%@\n\n%@\n\n%@\n\n", self.description, view.description, view.superview ? view.superview.description : @"No superview");
   [self yoga_addSubview:view];
   if (view != nil) {
     [self.yoga insertChildLayout:view.yoga atIndex:self.subviews.count - 1];
@@ -146,8 +141,6 @@ static const void* kYGYogaAssociatedKey = &kYGYogaAssociatedKey;
 - (void)yoga_exchangeSubviewAtIndex:(NSInteger)index1
                  withSubviewAtIndex:(NSInteger)index2
 {
-  NSCAssert(index1 < self.subviews.count && index2 < self.subviews.count,
-            @"Cannot operate on indexes outside of the range of subviews.");
   [self.yoga exchangeChildLayoutAtIndex:index1 withLayoutAtIndex:index2];
   [self yoga_exchangeSubviewAtIndex:index1 withSubviewAtIndex:index2];
 }
