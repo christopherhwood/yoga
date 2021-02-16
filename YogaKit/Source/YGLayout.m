@@ -158,20 +158,28 @@ YGValue YGPercentValue(CGFloat value) {
 
 static YGConfigRef globalConfig;
 
-@interface __YGNodeContext: NSObject
+@interface __YGNodeContext: NSObject <NSCopying>
 
 @property(nonatomic, readwrite, weak) UIView* view;
-@property(nonatomic, readwrite, assign) YGLayoutMeasureFunc measure;
+@property(nonatomic, readwrite, copy) YGLayoutMeasureFunc measure;
 
 @end
 
 @implementation __YGNodeContext
+
+- (id)copyWithZone:(NSZone *)zone {
+  __YGNodeContext* copy = [[__YGNodeContext allocWithZone: zone] init];
+  copy.measure = self.measure;
+  return copy;
+}
+
 @end
 
 @interface YGLayout ()
 
 @property(nonatomic, assign, readonly) BOOL isUIView;
 @property(nonatomic, retain, readwrite) __YGNodeContext* ctx;
+@property(nonatomic, retain, readwrite) NSMutableSet<YGLayout *>* childrenSet;
 
 @end
 
@@ -189,6 +197,7 @@ static YGConfigRef globalConfig;
 - (instancetype)init {
   if (self = [super init]) {
     _ctx = [[__YGNodeContext alloc] init];
+    _childrenSet = [[NSMutableSet alloc] init];
     _node = YGNodeNewWithConfig(globalConfig);
     YGNodeSetContext(_node, (__bridge void*)_ctx);
     YGNodeSetMeasureFunc(self.node, YGMeasure);
@@ -201,6 +210,7 @@ static YGConfigRef globalConfig;
   if (self = [super init]) {
     _ctx = [[__YGNodeContext alloc] init];
     _ctx.view = view;
+    _childrenSet = [[NSMutableSet alloc] init];
     _node = YGNodeNewWithConfig(globalConfig);
     YGNodeSetContext(_node, (__bridge void*)_ctx);
     YGNodeSetMeasureFunc(self.node, YGMeasure);
@@ -244,7 +254,7 @@ static YGConfigRef globalConfig;
 }
 
 - (NSUInteger)numberOfChildren {
-  return YGNodeGetChildCount(self.node);
+  return self.childrenSet.count;
 }
 
 - (BOOL)isLeaf {
@@ -326,12 +336,12 @@ YG_PROPERTY(CGFloat, aspectRatio, AspectRatio)
 
 - (void)applyLayout {
   [self calculateLayoutWithSize:self.view.bounds.size];
-  YGApplyLayoutToViewHierarchy(self.view, NO);
+  YGApplyLayoutToViewHierarchy(self.node, (CGPoint){.x = 0, .y = 0}, NO);
 }
 
 - (void)applyLayoutPreservingOrigin:(BOOL)preserveOrigin {
   [self calculateLayoutWithSize:self.view.bounds.size];
-  YGApplyLayoutToViewHierarchy(self.view, preserveOrigin);
+  YGApplyLayoutToViewHierarchy(self.node, (CGPoint){.x = 0, .y = 0}, preserveOrigin);
 }
 
 - (void)applyLayoutPreservingOrigin:(BOOL)preserveOrigin
@@ -345,7 +355,7 @@ YG_PROPERTY(CGFloat, aspectRatio, AspectRatio)
     size.height = YGUndefined;
   }
   [self calculateLayoutWithSize:size];
-  YGApplyLayoutToViewHierarchy(self.view, preserveOrigin);
+  YGApplyLayoutToViewHierarchy(self.node, (CGPoint){.x = 0, .y = 0}, preserveOrigin);
 }
 
 - (CGSize)intrinsicSize {
@@ -404,7 +414,7 @@ static YGSize YGMeasure(
                                             .height = constrainedHeight,
                                         }];
     }
-  } else if (ctx.measure) {
+  } else if (ctx.measure != nil) {
     sizeThatFits = ctx.measure((CGSize){
       .width = constrainedWidth,
       .height = constrainedHeight
@@ -470,14 +480,14 @@ static CGFloat YGRoundPixelValue(CGFloat value) {
   return roundf(value * scale) / scale;
 }
 
-static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
+// TODO - need to update this to pass down frames from non-view nodes
+static void YGApplyLayoutToViewHierarchy(YGNodeRef node, CGPoint offset, BOOL preserveOrigin) {
   NSCAssert(
       [NSThread isMainThread],
       @"Framesetting should only be done on the main thread.");
 
-  const YGLayout* yoga = view.yoga;
+  const UIView* view = ((__bridge __YGNodeContext*)YGNodeGetContext(node)).view;
 
-  YGNodeRef node = yoga.node;
   const CGPoint topLeft = {
       YGNodeLayoutGetLeft(node),
       YGNodeLayoutGetTop(node),
@@ -487,26 +497,36 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
       topLeft.x + YGNodeLayoutGetWidth(node),
       topLeft.y + YGNodeLayoutGetHeight(node),
   };
-
-  const CGPoint origin = preserveOrigin ? view.frame.origin : CGPointZero;
-  view.frame = (CGRect){
-      .origin =
-          {
-              .x = YGRoundPixelValue(topLeft.x + origin.x),
-              .y = YGRoundPixelValue(topLeft.y + origin.y),
-          },
-      .size =
-          {
-              .width = YGRoundPixelValue(bottomRight.x) -
-                  YGRoundPixelValue(topLeft.x),
-              .height = YGRoundPixelValue(bottomRight.y) -
-                  YGRoundPixelValue(topLeft.y),
-          },
+  
+  CGPoint nodeOffset = (CGPoint){
+    .x = YGRoundPixelValue(topLeft.x + offset.x),
+    .y = YGRoundPixelValue(topLeft.y + offset.y),
   };
 
-  if (!yoga.isLeaf) {
-    for (NSUInteger i = 0; i < view.subviews.count; i++) {
-      YGApplyLayoutToViewHierarchy(view.subviews[i], NO);
+  if (view != nil) {
+    const CGPoint origin = preserveOrigin ? view.frame.origin : CGPointZero;
+    view.frame = (CGRect){
+        .origin =
+            {
+                .x = YGRoundPixelValue(nodeOffset.x + origin.x),
+                .y = YGRoundPixelValue(nodeOffset.y + origin.y),
+            },
+        .size =
+            {
+                .width = YGRoundPixelValue(bottomRight.x) -
+              YGRoundPixelValue(topLeft.x),
+                .height = YGRoundPixelValue(bottomRight.y) -
+              YGRoundPixelValue(topLeft.y),
+            },
+    };
+    nodeOffset = CGPointZero;
+  }
+  
+
+  int childCount = YGNodeGetChildCount(node);
+  if (childCount > 0) {
+    for (UInt32 i = 0; i < childCount; i++) {
+      YGApplyLayoutToViewHierarchy(YGNodeGetChild(node, i), nodeOffset, NO);
     }
   }
 }
@@ -537,6 +557,8 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
   if (YGNodeHasMeasureFunc(self.node)) {
     YGNodeSetMeasureFunc(self.node, NULL);
   }
+  
+  [self.childrenSet addObject:child];
   YGNodeInsertChild(self.node, child.node, (int)index);
 }
 
@@ -549,6 +571,11 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
 }
 
 - (void)removeChildLayout:(YGLayout*) child {
+  if (YGNodeGetParent(child.node) != self.node) {
+    return;
+  }
+  
+  [self.childrenSet removeObject:child];
   YGNodeRemoveChild(self.node, child.node);
   if (YGNodeGetChildCount(self.node) == 0) {
     YGNodeSetMeasureFunc(self.node, YGMeasure);
@@ -557,11 +584,35 @@ static void YGApplyLayoutToViewHierarchy(UIView* view, BOOL preserveOrigin) {
 
 - (void)reparentChildrenToNewParent:(YGLayout *)newParent {
   int childCount = YGNodeGetChildCount(self.node);
-  for (int i = 0; i < childCount; i++) {
-    YGNodeRef child = YGNodeGetChild(self.node, i);
-    YGNodeRemoveChild(self.node, child);
-    YGNodeInsertChild(newParent.node, child, i);
+  if (childCount > 0) {
+    YGNodeSetMeasureFunc(newParent.node, NULL);
+    
+    for (int i = 0; i < childCount; i++) {
+      YGNodeRef child = YGNodeGetChild(self.node, 0);
+      YGNodeRemoveChild(self.node, child);
+      YGNodeInsertChild(newParent.node, child, i);
+    }
+    
+    newParent.childrenSet = self.childrenSet;
+    self.childrenSet = [[NSMutableSet alloc] init];
+    
+    YGNodeSetMeasureFunc(self.node, YGMeasure);
   }
+}
+
+- (id)copyWithZone:(NSZone *)zone {
+  YGLayout* copy = [[YGLayout allocWithZone:zone] init];
+  copy.ctx = [self.ctx copy];
+  copy.node = YGNodeClone(self.node);
+  copy.childrenSet = [[NSMutableSet alloc] init];
+  // Children aren't deep copied, removing them avoids
+  // any chance of accidentally updating the initial tree.
+  YGNodeRemoveAllChildren(copy.node);
+  return copy;
+}
+
+- (NSSet<YGLayout *> *)children {
+  return [NSSet setWithSet:self.childrenSet];
 }
 
 @end

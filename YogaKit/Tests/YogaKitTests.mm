@@ -715,7 +715,51 @@
   CGSize expectedSize = {.width = 136, .height = 136};
   XCTAssertEqual(rootSize.width, expectedSize.width);
   XCTAssertEqual(rootSize.height, expectedSize.height);
-//  XCTAssert(rootNode.intrinsicSize == (CGSize){.width = 100, .height = 100});
+}
+
+- (void)testLayoutLifetime {
+  YGLayout* rootNode = [[YGLayout alloc] init];
+  
+  {
+    YGLayout* titleNode = [[YGLayout alloc] init];
+    [rootNode insertChildLayout:titleNode atIndex:0];
+  }
+  
+  XCTAssertEqual(rootNode.numberOfChildren, 1);
+}
+
+- (void)testReparenting {
+  YGLayout* rootNode = [[YGLayout alloc] init];
+  YGLayout* childNode = [[YGLayout alloc] init];
+  YGLayout* childNode2 = [[YGLayout alloc] init];
+  [rootNode insertChildLayout:childNode atIndex:0];
+  [rootNode insertChildLayout:childNode2 atIndex:1];
+  
+  YGLayout* newParent = [[YGLayout alloc] init];
+  [rootNode reparentChildrenToNewParent:newParent];
+  
+  XCTAssertEqual(rootNode.numberOfChildren, 0);
+  XCTAssertEqual(newParent.numberOfChildren, 2);
+  XCTAssertEqual(YGNodeGetParent(childNode.node), newParent.node);
+}
+
+- (void)testCopying {
+  YGLayout* copyA = [[YGLayout alloc] init];
+  copyA.alignContent = YGAlignSpaceBetween;
+  copyA.borderWidth = 2.0;
+  copyA.flexGrow = 5.0;
+  
+  YGLayout* child = [[YGLayout alloc] init];
+  [copyA insertChildLayout:child atIndex:0];
+  
+  YGLayout* copyB = [copyA copy];
+  
+  XCTAssertEqual(copyA.alignContent, copyB.alignContent);
+  XCTAssertEqual(copyA.borderWidth, copyB.borderWidth);
+  XCTAssertEqual(copyA.flexGrow, copyB.flexGrow);
+  XCTAssertEqual(copyA.numberOfChildren, 1);
+  XCTAssertEqual(copyB.numberOfChildren, 0);
+  XCTAssertEqual(YGNodeGetParent(child.node), copyA.node);
 }
 
 @end

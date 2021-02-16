@@ -158,9 +158,14 @@ typedef CGSize(^YGLayoutMeasureFunc)(CGSize constrainedSize);
  */
 @property(nonatomic, readwrite, assign)YGLayoutMeasureFunc measure;
 
+@property(nonatomic, readonly, copy) NSSet<YGLayout *> * children;
+
 - (void)insertChildLayout:(YGLayout*)child atIndex:(NSInteger)index;
 - (void)exchangeChildLayoutAtIndex:(NSInteger)indexA withLayoutAtIndex:(NSInteger)indexB;
 - (void)removeChildLayout:(YGLayout*)child;
 - (void)reparentChildrenToNewParent:(YGLayout*)newParent;
 
+@end
+
+@interface YGLayout(NSCopying) <NSCopying>
 @end

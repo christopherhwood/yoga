@@ -11,7 +11,7 @@
 @interface YGLayout ()
 
 @property(nonatomic, weak, readwrite) UIView* view;
-@property(nonatomic, assign, readonly) YGNodeRef node;
+@property(nonatomic, assign, readwrite) YGNodeRef node;
 
 - (instancetype)initWithView:(UIView*)view;
 
